@@ -1,6 +1,9 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const P = require("pino");
 
+// connect command handler
+const handler = require("./commands/handler");
+
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("session");
 
@@ -11,8 +14,10 @@ async function startBot() {
         browser: ["Ecto Hack MD", "Chrome", "1.0.0"]
     });
 
+    // save login/session
     sock.ev.on("creds.update", saveCreds);
 
+    // handle connection state
     sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
 
@@ -26,27 +31,12 @@ async function startBot() {
                 startBot();
             }
         } else if (connection === "open") {
-            console.log("Ecto Hack MD is now connected to WhatsApp ✔");
+            console.log("✔ Ecto Hack MD is now connected to WhatsApp");
         }
     });
 
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message) return;
-
-        const text =
-            msg.message.conversation ||
-            msg.message.extendedTextMessage?.text;
-
-        if (!text) return;
-
-        const from = msg.key.remoteJid;
-
-        // Simple test command
-        if (text.toLowerCase() === "ping") {
-            await sock.sendMessage(from, { text: "Pong ✔" });
-        }
-    });
+    // attach command system
+    handler(sock);
 }
 
 startBot();
