@@ -1,16 +1,17 @@
 const fs = require("fs");
 const path = require("path");
+const config = require("../config");
 
 module.exports = (sock) => {
     const commands = new Map();
     const pluginsPath = __dirname;
 
-    // Auto-load all commands
+    // Load all commands safely
     const loadCommands = () => {
         commands.clear();
 
-        const files = fs.readdirSync(pluginsPath).filter(f => 
-            f.endsWith(".js") && f !== "handler.js"
+        const files = fs.readdirSync(pluginsPath).filter(
+            f => f.endsWith(".js") && f !== "handler.js"
         );
 
         for (const file of files) {
@@ -24,7 +25,7 @@ module.exports = (sock) => {
                 }
 
             } catch (err) {
-                console.log(`Plugin load error (${file}):`, err.message);
+                console.log(`❌ Failed to load ${file}:`, err.message);
             }
         }
 
@@ -40,6 +41,7 @@ module.exports = (sock) => {
             if (!msg.message) return;
 
             const from = msg.key.remoteJid;
+            const sender = msg.key.participant || msg.key.remoteJid;
 
             const text =
                 msg.message.conversation ||
@@ -47,19 +49,38 @@ module.exports = (sock) => {
 
             if (!text) return;
 
-            const body = text.toLowerCase().trim();
+            const body = text.trim();
             const args = body.split(" ");
-            const cmd = args[0];
+            const cmd = args[0].toLowerCase();
 
+            // Check command exists
             if (!commands.has(cmd)) return;
 
-            await commands.get(cmd).run(sock, msg, from, args);
+            const command = commands.get(cmd);
+
+            // OWNER CHECK (if required by command)
+            if (command.owner && sender !== config.ownerNumber + "@s.whatsapp.net") {
+                return sock.sendMessage(from, {
+                    text: "⚠️ This command is for owner only."
+                });
+            }
+
+            // Run command safely
+            try {
+                await command.run(sock, msg, from, args);
+            } catch (err) {
+                console.log("Command error:", err.message);
+
+                await sock.sendMessage(from, {
+                    text: "⚠️ Error executing command."
+                });
+            }
 
         } catch (err) {
-            console.log("Runtime error:", err.message);
+            console.log("Handler crash prevented:", err.message);
         }
     });
 
-    // Optional: auto-reload every 10 seconds (dev mode)
+    // Auto reload plugins every 10 seconds
     setInterval(loadCommands, 10000);
 };
