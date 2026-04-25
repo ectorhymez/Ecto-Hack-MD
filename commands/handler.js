@@ -5,7 +5,11 @@ const config = require("../config");
 module.exports = (sock) => {
     const commands = new Map();
 
-    // Load all commands
+    const isGroup = (jid) => jid.endsWith("@g.us");
+
+    // =========================
+    // LOAD COMMANDS
+    // =========================
     const loadCommands = () => {
         commands.clear();
 
@@ -33,6 +37,9 @@ module.exports = (sock) => {
 
     loadCommands();
 
+    // =========================
+    // MESSAGE LISTENER
+    // =========================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         try {
             const msg = messages[0];
@@ -57,17 +64,15 @@ module.exports = (sock) => {
             if (linkRegex.test(body)) {
                 try {
                     await sock.sendMessage(from, {
-                        text: "🚫 Link detected! Message not allowed."
+                        text: "🚫 Link detected and removed."
                     });
 
                     await sock.sendMessage(from, {
                         delete: msg.key
                     });
-
                 } catch (e) {
                     console.log("Anti-link error:", e.message);
                 }
-
                 return;
             }
 
@@ -79,24 +84,100 @@ module.exports = (sock) => {
             const args = body.slice(config.prefix.length).split(" ");
             const cmd = config.prefix + args[0].toLowerCase();
 
-            if (!commands.has(cmd)) return;
+            const mentioned =
+                msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
 
+            // =========================
+            // 👑 OWNER CHECK (for plugin-based owner commands)
+            // =========================
             const command = commands.get(cmd);
 
-            // =========================
-            // OWNER CHECK
-            // =========================
+            if (!command) return;
+
             if (
                 command.owner &&
                 sender !== config.ownerNumber + "@s.whatsapp.net"
             ) {
                 return sock.sendMessage(from, {
-                    text: "⚠️ This command is owner-only."
+                    text: "⚠️ Owner only command."
                 });
             }
 
             // =========================
-            // RUN COMMAND SAFELY
+            // 👥 ADMIN COMMANDS (built-in)
+            // =========================
+
+            // KICK
+            if (cmd === config.prefix + "kick") {
+                if (!isGroup(from)) return;
+
+                try {
+                    if (!mentioned[0]) {
+                        return sock.sendMessage(from, {
+                            text: "❌ Mention a user to kick."
+                        });
+                    }
+
+                    await sock.groupParticipantsUpdate(from, [mentioned[0]], "remove");
+
+                    await sock.sendMessage(from, {
+                        text: "👢 User kicked."
+                    });
+
+                } catch (e) {
+                    console.log("Kick error:", e.message);
+                }
+                return;
+            }
+
+            // PROMOTE
+            if (cmd === config.prefix + "promote") {
+                if (!isGroup(from)) return;
+
+                try {
+                    if (!mentioned[0]) {
+                        return sock.sendMessage(from, {
+                            text: "❌ Mention a user to promote."
+                        });
+                    }
+
+                    await sock.groupParticipantsUpdate(from, [mentioned[0]], "promote");
+
+                    await sock.sendMessage(from, {
+                        text: "⬆️ User promoted to admin."
+                    });
+
+                } catch (e) {
+                    console.log("Promote error:", e.message);
+                }
+                return;
+            }
+
+            // DEMOTE
+            if (cmd === config.prefix + "demote") {
+                if (!isGroup(from)) return;
+
+                try {
+                    if (!mentioned[0]) {
+                        return sock.sendMessage(from, {
+                            text: "❌ Mention a user to demote."
+                        });
+                    }
+
+                    await sock.groupParticipantsUpdate(from, [mentioned[0]], "demote");
+
+                    await sock.sendMessage(from, {
+                        text: "⬇️ User demoted."
+                    });
+
+                } catch (e) {
+                    console.log("Demote error:", e.message);
+                }
+                return;
+            }
+
+            // =========================
+            // RUN PLUGIN COMMANDS
             // =========================
             try {
                 await command.run(sock, msg, from, args);
@@ -113,6 +194,6 @@ module.exports = (sock) => {
         }
     });
 
-    // Auto reload commands (dev mode)
+    // Auto reload system
     setInterval(loadCommands, 10000);
 };
