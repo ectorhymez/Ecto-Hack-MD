@@ -5,6 +5,7 @@ const config = require("../config");
 module.exports = (sock) => {
     const commands = new Map();
 
+    // Load all commands
     const loadCommands = () => {
         commands.clear();
 
@@ -23,7 +24,7 @@ module.exports = (sock) => {
                 }
 
             } catch (err) {
-                console.log(`❌ Error loading ${file}:`, err.message);
+                console.log(`❌ Load error (${file}):`, err.message);
             }
         }
 
@@ -48,7 +49,31 @@ module.exports = (sock) => {
 
             const body = text.trim();
 
-            // MUST start with prefix
+            // =========================
+            // 🛡️ ANTI-LINK SYSTEM
+            // =========================
+            const linkRegex = /(https?:\/\/|www\.|chat\.whatsapp\.com)/gi;
+
+            if (linkRegex.test(body)) {
+                try {
+                    await sock.sendMessage(from, {
+                        text: "🚫 Link detected! Message not allowed."
+                    });
+
+                    await sock.sendMessage(from, {
+                        delete: msg.key
+                    });
+
+                } catch (e) {
+                    console.log("Anti-link error:", e.message);
+                }
+
+                return;
+            }
+
+            // =========================
+            // PREFIX CHECK
+            // =========================
             if (!body.startsWith(config.prefix)) return;
 
             const args = body.slice(config.prefix.length).split(" ");
@@ -58,22 +83,36 @@ module.exports = (sock) => {
 
             const command = commands.get(cmd);
 
-            // OWNER ONLY CHECK
+            // =========================
+            // OWNER CHECK
+            // =========================
             if (
                 command.owner &&
                 sender !== config.ownerNumber + "@s.whatsapp.net"
             ) {
                 return sock.sendMessage(from, {
-                    text: "⚠️ Owner only command."
+                    text: "⚠️ This command is owner-only."
                 });
             }
 
-            await command.run(sock, msg, from, args);
+            // =========================
+            // RUN COMMAND SAFELY
+            // =========================
+            try {
+                await command.run(sock, msg, from, args);
+            } catch (err) {
+                console.log("Command error:", err.message);
+
+                await sock.sendMessage(from, {
+                    text: "⚠️ Command execution failed."
+                });
+            }
 
         } catch (err) {
-            console.log("Handler error:", err.message);
+            console.log("Handler crash prevented:", err.message);
         }
     });
 
+    // Auto reload commands (dev mode)
     setInterval(loadCommands, 10000);
 };
