@@ -1,25 +1,30 @@
 module.exports = {
     name: ".menu",
-    run: async (sock, msg, from, args) => {
-        const menuText = `
+    run: async (sock, msg, from) => {
+        await sock.sendMessage(from, {
+            text: `
 ⚡ *ECTO HACK MD MENU*
 
-🤖 AI FEATURES
-.ai - Chat with AI
+🤖 AI
+.ai - Chat AI
 
-🧰 BASIC COMMANDS
+🧰 TOOLS
 .ping - Test bot
-.help - Command list
+.help - Help menu
+
+🛡️ SECURITY
+.antilink - Anti-link system
+
+🎭 MEDIA
+.sticker - Sticker tool
+.dl - Downloader
 
 👑 OWNER
-(shown only if you are owner in future updates)
+.owner - Owner info
 
 ━━━━━━━━━━━━━━
 Powered by Ecto Hack MD
-        `;
-
-        await sock.sendMessage(from, {
-            text: menuText
+            `
         });
     }
 };
