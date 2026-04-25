@@ -3,20 +3,35 @@ const path = require("path");
 
 module.exports = (sock) => {
     const commands = new Map();
+    const pluginsPath = __dirname;
 
-    // Load commands safely
-    const files = fs.readdirSync(__dirname).filter(f => f.endsWith(".js") && f !== "handler.js");
+    // Auto-load all commands
+    const loadCommands = () => {
+        commands.clear();
 
-    for (const file of files) {
-        try {
-            const command = require(path.join(__dirname, file));
-            if (command.name && command.run) {
-                commands.set(command.name, command);
+        const files = fs.readdirSync(pluginsPath).filter(f => 
+            f.endsWith(".js") && f !== "handler.js"
+        );
+
+        for (const file of files) {
+            try {
+                delete require.cache[require.resolve(path.join(pluginsPath, file))];
+
+                const plugin = require(path.join(pluginsPath, file));
+
+                if (plugin.name && plugin.run) {
+                    commands.set(plugin.name, plugin);
+                }
+
+            } catch (err) {
+                console.log(`Plugin load error (${file}):`, err.message);
             }
-        } catch (e) {
-            console.log(`Failed to load command ${file}:`, e.message);
         }
-    }
+
+        console.log(`✔ Loaded ${commands.size} commands`);
+    };
+
+    loadCommands();
 
     // Message listener
     sock.ev.on("messages.upsert", async ({ messages }) => {
@@ -36,19 +51,15 @@ module.exports = (sock) => {
             const args = body.split(" ");
             const cmd = args[0];
 
-            if (commands.has(cmd)) {
-                try {
-                    await commands.get(cmd).run(sock, msg, from, args);
-                } catch (err) {
-                    console.log("Command error:", err.message);
-                    await sock.sendMessage(from, {
-                        text: "⚠️ Command error occurred."
-                    });
-                }
-            }
+            if (!commands.has(cmd)) return;
+
+            await commands.get(cmd).run(sock, msg, from, args);
 
         } catch (err) {
-            console.log("Handler error:", err.message);
+            console.log("Runtime error:", err.message);
         }
     });
+
+    // Optional: auto-reload every 10 seconds (dev mode)
+    setInterval(loadCommands, 10000);
 };
